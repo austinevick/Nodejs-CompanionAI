@@ -1,16 +1,18 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
+import mongoose from 'mongoose';
 import fs from 'fs';
 import multer from 'multer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Conversation from './model.js';
 dotenv.config();
 
 const app = express();
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
+app.use(express.json());
 const port = 3000;
 
 const configuration = new GoogleGenerativeAI(process.env.APIKEY);
@@ -65,19 +67,26 @@ app.post("/api/gen/image", async (req, res) => {
 
 app.post("/api/generate", async (req, res) => {
     try {
-        if (!req.body.prompt) return res.status(400).json({
+        const { prompt } = req.body;
+        if (!prompt) return res.status(400).json({
             status: 400,
             message: "Please enter a message"
         });
-        const result = await model.generateContent(req.body.prompt);
-        const tokenCount = await model.countTokens(req.body.prompt).then(e => e.totalTokens);
-        const response = await result.response;
-        const text = response.text();
-        console.log(text);
+        const result = await model.generateContent(prompt);
+        const tokenCount = await model.countTokens(prompt)
+            .then(e => e.totalTokens);
+
+        const conversation = new Conversation({
+            prompt: prompt,
+            response: result.response.text()
+        });
+
+        const data = await conversation.save();
+
         return res.status(200).json({
             status: 200,
             message: "Success",
-            data: text,
+            data: data,
             tokenCount: tokenCount
         });
     } catch (error) {
@@ -88,6 +97,33 @@ app.post("/api/generate", async (req, res) => {
     }
 });
 
-app.listen(port, () => {
+app.get("/api/conversations", async (req, res) => {
+
+    try {
+        const data = await Conversation.find({});
+        return res.status(200).json({
+            status: 200,
+            message: "Success",
+            data: data
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            status: 500,
+            message: error.message
+        });
+    }
+
+});
+
+
+
+app.listen(port, async () => {
+
+    mongoose.connect(process.env.MONGO_URI)
+        .then(e => console.log("Connected to db succesfully")
+        ).catch(e => console.log("Error connecting to db")
+        );
+
     console.log(`Server running on port ${ port }`);
 });
