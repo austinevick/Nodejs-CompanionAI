@@ -3,7 +3,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import Conversation from '../model/conversation.js';
 import UserModel from '../model/user.js';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 const conversationRouter = express.Router();
@@ -18,6 +17,7 @@ const model = configuration.getGenerativeModel({ model: modelId });
 conversationRouter.post("/generate", async (req, res) => {
     try {
         const { userId, prompt } = req.body;
+        const date = new Date();
         if (!prompt) return res.status(400).json({
             status: 400,
             message: "Please enter a message"
@@ -33,7 +33,8 @@ conversationRouter.post("/generate", async (req, res) => {
         const userConversation = new Conversation({
             sender: userId,
             receiver: '6739ac9916ad3b3077d147df',
-            message: prompt
+            message: prompt,
+            timeSent: date.getTime()
         });
         await userConversation.save();
         await UserModel.findByIdAndUpdate(userId,
@@ -46,7 +47,8 @@ conversationRouter.post("/generate", async (req, res) => {
         const aiConversation = new Conversation({
             sender: '6739ac9916ad3b3077d147df',
             receiver: userId,
-            message: result.response.text()
+            message: result.response.text(),
+            timeSent: date.getTime()
         });
         await UserModel.findByIdAndUpdate("6739ac9916ad3b3077d147df",
             {
@@ -93,19 +95,17 @@ conversationRouter.get("/conversations", async (req, res) => {
 
 
 /// Get conversations for a specific user
-conversationRouter.get("/conversations/:userid", async (req, res) => {
+conversationRouter.get("/conversations/:id", async (req, res) => {
 
     try {
-        const data = await Conversation.find({ sender: req.params.userid });
-        // .populate(
-        //     {
-        //         path: 'sender', select: '-password', populate: 'conversations'
-        //     }
-        // ).populate(
-        //     {
-        //         path: 'receiver', select: '-password', populate: 'conversations'
-        //     }
-        // );
+        const { id: userToChatId } = req.params;
+        const currentUserId = "6739aceb0d8492b08b57e518";
+        const data = await Conversation.find({
+            $or: [
+                { sender: currentUserId, receiver: userToChatId },
+                { sender: userToChatId, receiver: currentUserId }
+            ]
+        });
 
         return res.status(200).json({
             status: 200,
